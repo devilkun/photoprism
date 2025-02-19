@@ -11,7 +11,7 @@ import Album from "../../page-model/album";
 import Settings from "../../page-model/settings";
 import Library from "../../page-model/library";
 
-fixture`Test settings`.page`${testcafeconfig.url}`.beforeEach(async (t) => {
+fixture`Test general settings`.page`${testcafeconfig.url}`.beforeEach(async (t) => {
   await page.login("admin", "photoprism");
 });
 
@@ -30,12 +30,15 @@ test.meta("testID", "settings-general-001").meta({ type: "short", mode: "auth" }
   "Common: Disable delete",
   async (t) => {
     await menu.openPage("archive");
+    await toolbar.checkToolbarActionAvailability("delete-all", true);
     await photo.triggerHoverAction("nth", 0, "select");
     await contextmenu.checkContextMenuActionAvailability("delete", true);
     await contextmenu.clearSelection();
     await menu.openPage("settings");
     await t.click(settings.deleteCheckbox);
     await menu.openPage("archive");
+    await toolbar.checkToolbarActionAvailability("delete-all", false);
+
     await photo.triggerHoverAction("nth", 0, "select");
 
     await contextmenu.checkContextMenuActionAvailability("restore", true);
@@ -55,29 +58,38 @@ test.meta("testID", "settings-general-001").meta({ type: "short", mode: "auth" }
     await contextmenu.clearSelection();
     await menu.openPage("settings");
     await t.click(settings.deleteCheckbox);
+    await menu.openPage("browse");
+    await toolbar.search("stack:true");
+    await photo.triggerHoverAction("nth", 0, "select");
+    await contextmenu.triggerContextMenuAction("edit", "");
+    await t.click(photoedit.filesTab);
+    await t.click(photoedit.toggleExpandFile.nth(1));
+
+    await t.expect(photoedit.deleteFile.visible).ok();
   }
 );
 
 test.meta("testID", "settings-general-002").meta({ type: "short", mode: "auth" })(
   "Common: Change language",
   async (t) => {
-    await t.expect(Selector(".nav-browse").innerText).contains("Search");
+    await menu.openNav();
+    await t.expect(Selector("a.nav-browse").innerText).contains("Search");
 
     await menu.openPage("settings");
     await t
       .click(settings.languageOpenSelection)
-      .hover(Selector("div").withText("Deutsch").parent('div[role="listitem"]'))
-      .click(Selector("div").withText("Deutsch").parent('div[role="listitem"]'));
+      .hover(Selector("div").withText("Deutsch").parent('div[role="option"]'))
+      .click(Selector("div").withText("Deutsch").parent('div[role="option"]'));
     await t.eval(() => location.reload());
 
-    await t.expect(Selector(".nav-browse").innerText).contains("Suche");
+    await t.expect(Selector("a.nav-browse").innerText).contains("Suche");
 
     await t
       .click(settings.languageOpenSelection)
-      .hover(Selector("div").withText("English").parent('div[role="listitem"]'))
-      .click(Selector("div").withText("English").parent('div[role="listitem"]'));
+      .hover(Selector("div").withText("English").parent('div[role="option"]'))
+      .click(Selector("div").withText("English").parent('div[role="option"]'));
 
-    await t.expect(Selector(".nav-browse").innerText).contains("Search");
+    await t.expect(Selector("a.nav-browse").innerText).contains("Search");
   }
 );
 
@@ -259,6 +271,7 @@ test.meta("testID", "settings-general-004").meta({ type: "short", mode: "auth" }
 
     await menu.openPage("settings");
     await t.click(settings.peopleCheckbox).click(settings.labelsCheckbox);
+    await menu.openPage("browse");
 
     await menu.checkMenuItemAvailability("people", true);
     await menu.checkMenuItemAvailability("labels", true);
@@ -300,6 +313,9 @@ test.meta("testID", "settings-general-005").meta({ type: "short", mode: "auth" }
 
     await photo.checkPhotoVisibility("pqnah1k2frui6p63", false);
 
+    await t.navigateTo("/library/archive");
+    await toolbar.checkToolbarActionAvailability("delete-all", true);
+
     await menu.openPage("settings");
     await t
       .click(settings.archiveCheckbox)
@@ -338,6 +354,9 @@ test.meta("testID", "settings-general-005").meta({ type: "short", mode: "auth" }
 
     await photo.checkPhotoVisibility("pqnah1k2frui6p63", true);
 
+    await t.navigateTo("/library/archive");
+    await toolbar.checkToolbarActionAvailability("delete-all", false);
+
     await menu.openPage("settings");
     await t
       .click(settings.privateCheckbox)
@@ -373,7 +392,7 @@ test.meta("testID", "settings-general-006").meta({ type: "short", mode: "auth" }
       .expect(photoedit.downloadFile.nth(0).visible)
       .ok()
       .click(photoedit.toggleExpandFile.nth(1))
-      .expect(photoedit.downloadFile.nth(1).visible)
+      .expect(photoedit.downloadFile.nth(0).visible)
       .ok()
       .expect(photoedit.deleteFile.visible)
       .ok()
@@ -383,9 +402,11 @@ test.meta("testID", "settings-general-006").meta({ type: "short", mode: "auth" }
     await toolbar.search("photo:true");
     await photoviewer.openPhotoViewer("nth", 0);
 
-    await photoviewer.checkPhotoViewerActionAvailability("download", true);
+    await photoviewer.checkPhotoViewerActionAvailability("download-button", true);
 
     await photoviewer.triggerPhotoViewerAction("close");
+    await t.expect(Selector("div.p-lightbox__pswp").visible).notOk();
+
     await menu.openPage("settings");
 
     await t
@@ -468,9 +489,10 @@ test.meta("testID", "settings-general-006").meta({ type: "short", mode: "auth" }
 
     await toolbar.search("photo:true");
     await photoviewer.openPhotoViewer("nth", 0);
-    await photoviewer.checkPhotoViewerActionAvailability("download", false);
-    await photoviewer.checkPhotoViewerActionAvailability("edit", false);
+    await photoviewer.checkPhotoViewerActionAvailability("download-button", false);
+    await photoviewer.checkPhotoViewerActionAvailability("edit-button", false);
     await photoviewer.triggerPhotoViewerAction("close");
+    await t.expect(Selector("div.p-lightbox__pswp").visible).notOk();
 
     await menu.openPage("settings");
     await t
