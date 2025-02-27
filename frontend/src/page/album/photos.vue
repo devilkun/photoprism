@@ -1,62 +1,97 @@
 <template>
-  <div v-infinite-scroll="loadMore" class="p-page p-page-album-photos" :infinite-scroll-disabled="scrollDisabled"
-       :infinite-scroll-distance="scrollDistance" :infinite-scroll-listen-for-event="'scrollRefresh'">
+  <div
+    ref="page"
+    tabindex="1"
+    class="p-page p-page-album-photos"
+    :class="$config.aclClasses('photos')"
+    @keydown.ctrl="onCtrl"
+  >
+    <p-album-toolbar
+      ref="toolbar"
+      :filter="filter"
+      :album="model"
+      :settings="settings"
+      :refresh="refresh"
+      :update-filter="updateFilter"
+      :update-query="updateQuery"
+    ></p-album-toolbar>
 
-    <p-album-toolbar :filter="filter" :album="model" :settings="settings" :refresh="refresh"
-                     :update-filter="updateFilter" :update-query="updateQuery"></p-album-toolbar>
+    <div v-if="loading" class="pa-6">
+      <v-progress-linear :indeterminate="true"></v-progress-linear>
+    </div>
+    <div v-else>
+      <p-scroll
+        :load-more="loadMore"
+        :load-disabled="scrollDisabled"
+        :load-distance="scrollDistance"
+        :loading="loading"
+      >
+      </p-scroll>
 
-    <v-container v-if="loading" fluid class="pa-4">
-      <v-progress-linear color="secondary-dark" :indeterminate="true"></v-progress-linear>
-    </v-container>
-    <v-container v-else fluid class="pa-0">
-      <p-scroll-top></p-scroll-top>
+      <p-photo-clipboard :refresh="refresh" :album="model" context="album"></p-photo-clipboard>
 
-      <p-photo-clipboard :refresh="refresh"
-                         :selection="selection"
-                         :album="model" context="album"></p-photo-clipboard>
-
-      <p-photo-mosaic v-if="settings.view === 'mosaic'"
-                      context="album"
-                      :photos="results"
-                      :select-mode="selectMode"
-                      :filter="filter"
-                      :album="model"
-                      :edit-photo="editPhoto"
-                      :open-photo="openPhoto"
-                      :is-shared-view="isShared"></p-photo-mosaic>
-      <p-photo-list v-else-if="settings.view === 'list'"
-                    context="album"
-                    :photos="results"
-                    :select-mode="selectMode"
-                    :filter="filter"
-                    :album="model"
-                    :open-photo="openPhoto"
-                    :edit-photo="editPhoto"
-                    :open-location="openLocation"
-                    :is-shared-view="isShared"></p-photo-list>
-      <p-photo-cards v-else
-                     context="album"
-                     :photos="results"
-                     :select-mode="selectMode"
-                     :filter="filter"
-                     :album="model"
-                     :open-photo="openPhoto"
-                     :edit-photo="editPhoto"
-                     :open-location="openLocation"
-                     :is-shared-view="isShared"></p-photo-cards>
-    </v-container>
+      <p-photo-view-mosaic
+        v-if="settings.view === 'mosaic'"
+        context="album"
+        :photos="results"
+        :select-mode="selectMode"
+        :filter="filter"
+        :album="model"
+        :edit-photo="editPhoto"
+        :open-photo="openPhoto"
+        :is-shared-view="isShared"
+      ></p-photo-view-mosaic>
+      <p-photo-view-list
+        v-else-if="settings.view === 'list'"
+        context="album"
+        :photos="results"
+        :select-mode="selectMode"
+        :filter="filter"
+        :album="model"
+        :open-photo="openPhoto"
+        :edit-photo="editPhoto"
+        :open-date="openDate"
+        :open-location="openLocation"
+        :is-shared-view="isShared"
+      ></p-photo-view-list>
+      <p-photo-view-cards
+        v-else
+        context="album"
+        :photos="results"
+        :select-mode="selectMode"
+        :filter="filter"
+        :album="model"
+        :open-photo="openPhoto"
+        :edit-photo="editPhoto"
+        :open-date="openDate"
+        :open-location="openLocation"
+        :is-shared-view="isShared"
+      ></p-photo-view-cards>
+    </div>
   </div>
 </template>
 
 <script>
-import {Photo, MediaLive, MediaRaw, MediaVideo, MediaAnimated} from "model/photo";
+import { Photo } from "model/photo";
 import Album from "model/album";
 import Thumb from "model/thumb";
-import Event from "pubsub-js";
-import Viewer from "common/viewer";
+import PAlbumToolbar from "component/album/toolbar.vue";
+import PPhotoClipboard from "component/photo/clipboard.vue";
+import PPhotoViewCards from "component/photo/view/cards.vue";
+import PPhotoViewMosaic from "component/photo/view/mosaic.vue";
+import PPhotoViewList from "component/photo/view/list.vue";
+import PScroll from "component/scroll.vue";
 
 export default {
-  name: 'PPageAlbumPhotos',
+  name: "PPageAlbumPhotos",
+  components: {
+    PAlbumToolbar,
+    PPhotoClipboard,
+    PPhotoViewCards,
+    PPhotoViewMosaic,
+    PPhotoViewList,
+    PScroll,
+  },
   props: {
     staticFilter: {
       type: Object,
@@ -64,16 +99,16 @@ export default {
     },
   },
   data() {
-    const uid = this.$route.params.uid;
+    const uid = this.$route.params.album;
     const query = this.$route.query;
     const routeName = this.$route.name;
-    const order = query['order'] ? query['order'] : 'oldest';
-    const camera = query['camera'] ? parseInt(query['camera']) : 0;
-    const q = query['q'] ? query['q'] : '';
-    const country = query['country'] ? query['country'] : '';
-    const view = this.viewType();
-    const filter = {country: country, camera: camera, order: order, q: q};
-    const settings = {view: view};
+    const order = query["order"] ? query["order"] : "oldest";
+    const camera = query["camera"] ? parseInt(query["camera"]) : 0;
+    const q = query["q"] ? query["q"] : "";
+    const country = query["country"] ? query["country"] : "";
+    const view = this.getViewType();
+    const filter = { country: country, camera: camera, order: order, q: q };
+    const settings = { view: view };
     const batchSize = Photo.batchSize();
 
     return {
@@ -90,7 +125,7 @@ export default {
       uid: uid,
       results: [],
       scrollDisabled: true,
-      scrollDistance: window.innerHeight * 6,
+      scrollDistance: window.innerHeight * 4,
       batchSize: batchSize,
       offset: 0,
       page: 0,
@@ -99,11 +134,13 @@ export default {
       filter: filter,
       lastFilter: {},
       routeName: routeName,
+      collectionRoute: this.$route.meta?.collectionRoute ? this.$route.meta.collectionRoute : "albums",
       loading: true,
-      viewer: {
+      lightbox: {
         results: [],
         loading: false,
         complete: false,
+        open: false,
         dirty: false,
         batchSize: 6000,
       },
@@ -115,59 +152,98 @@ export default {
     },
   },
   watch: {
-    '$route'() {
+    $route() {
+      if (!this.$view.isActive(this)) {
+        return;
+      }
+
+      this.$view.focus(this.$refs?.page);
+
       const query = this.$route.query;
 
-      this.filter.q = query['q'] ? query['q'] : '';
-      this.filter.camera = query['camera'] ? parseInt(query['camera']) : 0;
-      this.filter.country = query['country'] ? query['country'] : '';
-      this.settings.view = this.viewType();
+      this.filter.q = query["q"] ? query["q"] : "";
+      this.filter.camera = query["camera"] ? parseInt(query["camera"]) : 0;
+      this.filter.country = query["country"] ? query["country"] : "";
+      this.settings.view = this.getViewType();
 
       /**
-      * Even if the filter is unchanged, if the route is changed (for example
-      * from `/review` to `/browse`), then the lastFilter must be reset, so that
-      * a new search is actually triggered. That is because both routes use
-      * this component, so it is reused by vue. See
-      * https://github.com/photoprism/photoprism/pull/2782#issuecomment-1279821448.
-      *
-      * However, if the route is unchanged, the not resetting lastFilter prevents
-      * unnecessary search-api-calls! These search-calls would otherwise reset
-      * the view, even if we for example just returned from a fullscreen-download
-      * in the ios-pwa. See
-      * https://github.com/photoprism/photoprism/pull/2782#issue-1409954466
-      */
+       * Even if the filter is unchanged, if the route is changed (for example
+       * from `/review` to `/browse`), then the lastFilter must be reset, so that
+       * a new search is actually triggered. That is because both routes use
+       * this component, so it is reused by vue. See
+       * https://github.com/photoprism/photoprism/pull/2782#issuecomment-1279821448.
+       *
+       * However, if the route is unchanged, the not resetting lastFilter prevents
+       * unnecessary search-api-calls! These search-calls would otherwise reset
+       * the view, even if we for example just returned from a fullscreen-download
+       * in the ios-pwa. See
+       * https://github.com/photoprism/photoprism/pull/2782#issue-1409954466
+       */
       const routeChanged = this.routeName !== this.$route.name;
+
       if (routeChanged) {
         this.lastFilter = {};
       }
 
       this.routeName = this.$route.name;
 
-      if (this.uid !== this.$route.params.uid) {
-        this.uid = this.$route.params.uid;
+      if (this.uid !== this.$route.params.album) {
+        this.uid = this.$route.params.album;
         this.findAlbum().then(() => this.search());
       } else {
         this.search();
       }
-    }
+    },
   },
   created() {
     this.findAlbum().then(() => this.search());
 
-    this.subscriptions.push(Event.subscribe("albums.updated", (ev, data) => this.onAlbumsUpdated(ev, data)));
-    this.subscriptions.push(Event.subscribe("photos", (ev, data) => this.onUpdate(ev, data)));
+    this.subscriptions.push(this.$event.subscribe("albums.updated", (ev, data) => this.onAlbumsUpdated(ev, data)));
+    this.subscriptions.push(this.$event.subscribe("photos", (ev, data) => this.onUpdate(ev, data)));
 
-    this.subscriptions.push(Event.subscribe("touchmove.top", () => this.refresh()));
-    this.subscriptions.push(Event.subscribe("touchmove.bottom", () => this.loadMore()));
+    this.subscriptions.push(
+      this.$event.subscribe("lightbox.opened", (ev, data) => {
+        this.lightbox.open = true;
+      })
+    );
+    this.subscriptions.push(
+      this.$event.subscribe("lightbox.closed", (ev, data) => {
+        this.lightbox.open = false;
+      })
+    );
+
+    this.subscriptions.push(this.$event.subscribe("touchmove.top", () => this.refresh()));
+    this.subscriptions.push(this.$event.subscribe("touchmove.bottom", () => this.loadMore()));
   },
-  destroyed() {
+  mounted() {
+    this.$view.enter(this, this.$refs?.page);
+  },
+  beforeUnmount() {
     for (let i = 0; i < this.subscriptions.length; i++) {
-      Event.unsubscribe(this.subscriptions[i]);
+      this.$event.unsubscribe(this.subscriptions[i]);
     }
   },
+  unmounted() {
+    this.$view.leave(this);
+  },
   methods: {
-    viewType() {
-      let queryParam = this.$route.query['view'] ? this.$route.query['view'] : "";
+    onCtrl(ev) {
+      if (!ev || !(ev instanceof KeyboardEvent) || !ev.ctrlKey || !this.$view.isActive(this)) {
+        return;
+      }
+
+      switch (ev.code) {
+        case "KeyR":
+          ev.preventDefault();
+          this.refresh();
+          break;
+      }
+    },
+    hideExpansionPanel() {
+      return this.$refs?.toolbar?.hideExpansionPanel();
+    },
+    getViewType() {
+      let queryParam = this.$route.query["view"] ? this.$route.query["view"] : "";
       let defaultType = window.localStorage.getItem("photos_view");
       let storedType = window.localStorage.getItem("album_photos_view");
 
@@ -179,10 +255,26 @@ export default {
       } else if (defaultType) {
         return defaultType;
       } else if (window.innerWidth < 960) {
-        return 'mosaic';
+        return "mosaic";
       }
 
-      return 'cards';
+      return "cards";
+    },
+    openDate(index) {
+      if (!this.canEdit) {
+        return this.openPhoto(index);
+      }
+
+      const photo = this.results[index];
+
+      if (!photo) {
+        return;
+      } else if (!photo.TakenAt || photo.TakenAt.length < 10) {
+        this.editPhoto(index);
+        return;
+      }
+
+      this.$router.push({ query: { q: "taken:" + photo.TakenAt.substring(0, 10) } });
     },
     openLocation(index) {
       if (!this.hasPlaces) {
@@ -196,12 +288,12 @@ export default {
       }
 
       if (this.canAccessLibrary && photo.CellID && photo.CellID !== "zz") {
-        this.$router.push({name: "places_query", params: {q: photo.CellID}});
+        this.$router.push({ name: "places", query: { q: photo.CellID } });
       } else if (this.uid) {
-        this.$router.push({name: "places_scope", params: {s: this.uid, q: photo.CellID}});
+        this.$router.push({ name: "places_view", params: { s: this.uid }, query: { q: photo.CellID } });
       }
     },
-    editPhoto(index) {
+    editPhoto(index, tab) {
       if (!this.canEdit) {
         return this.openPhoto(index);
       }
@@ -211,56 +303,38 @@ export default {
       });
 
       // Open Edit Dialog
-      Event.publish("dialog.edit", {selection: selection, album: this.album, index: index});
+      this.$event.publish("dialog.edit", { selection, album: this.album, index, tab });
     },
-    openPhoto(index, showMerged = false, preferVideo = false) {
-      if (this.loading || !this.listen || this.viewer.loading || !this.results[index]) {
+    openPhoto(index, showMerged = false) {
+      if (this.loading || !this.listen || this.lightbox.loading || !this.results[index]) {
         return false;
       }
 
       const selected = this.results[index];
 
-      // Don't open as stack when user is selecting pictures, or a RAW has only one JPEG.
-      if (this.selection.length > 0 || selected.Type === MediaRaw && selected.jpegFiles().length < 2) {
+      // Do not open as stack if there is only one JPEG or if multiple pictures are selected.
+      if (this.selection.length > 0 || selected.jpegFiles().length < 2) {
         showMerged = false;
       }
 
-      /**
-       * If the file is a video or an animation (like gif), then we always play
-       * it in the video-player.
-       * If the file is a live-image (an image with an embedded video), then we only
-       * play it in the video-player if specifically requested.
-       * This is because:
-       * 1. the lower-resolution video in these files is already
-       *    played when hovering the element (which does not happen for regular
-       *    video files)
-       * 2. The video in live-images is an addon. The main focus is usually still
-       *    the high resolution image inside
-       *
-       * preferVideo is true, when the user explicitly clicks the live-image-icon.
-       */
-      if (preferVideo && selected.Type === MediaLive || selected.Type === MediaVideo || selected.Type === MediaAnimated) {
-        if (selected.isPlayable()) {
-          this.$viewer.play({video: selected, album: this.album});
-        } else {
-          this.$viewer.show(Thumb.fromPhotos(this.results), index);
-        }
-      } else if (showMerged) {
-        this.$viewer.show(Thumb.fromFiles([selected]), 0);
+      if (showMerged) {
+        this.$lightbox.openModels(Thumb.fromFiles([selected]), 0);
       } else {
-        Viewer.show(this, index);
+        this.$lightbox.openView(this, index);
       }
 
       return true;
     },
-    loadMore() {
-      if (this.scrollDisabled || this.$scrollbar.disabled()) return;
+    loadMore(force) {
+      if (!force && (this.scrollDisabled || this.$view.isHidden(this))) {
+        return;
+      }
 
       this.scrollDisabled = true;
       this.listen = false;
 
       if (this.dirty) {
-        this.viewer.dirty = true;
+        this.lightbox.dirty = true;
       }
 
       const count = this.dirty ? (this.page + 2) * this.batchSize : this.batchSize;
@@ -279,39 +353,44 @@ export default {
         Object.assign(params, this.staticFilter);
       }
 
-      Photo.search(params).then(response => {
-        this.results = Photo.mergeResponse(this.results, response);
-        this.complete = (response.count < count);
-        this.scrollDisabled = this.complete;
+      Photo.search(params)
+        .then((response) => {
+          this.results = Photo.mergeResponse(this.results, response);
+          this.complete = response.count < count;
+          this.scrollDisabled = this.complete;
 
-        if (this.complete) {
-          this.offset = offset;
+          if (this.complete) {
+            this.offset = offset;
 
-          if (this.results.length > 1) {
-            this.$notify.info(this.$gettextInterpolate(this.$gettext("%{n} pictures found"), {n: this.results.length}));
-          }
-        } else if (this.results.length >= Photo.limit()) {
-          this.offset = offset;
-          this.scrollDisabled = true;
-          this.complete = true;
-          this.$notify.warn(this.$gettext("Can't load more, limit reached"));
-        } else {
-          this.offset = offset + count;
-          this.page++;
-
-          this.$nextTick(() => {
-            if (this.$root.$el.clientHeight <= window.document.documentElement.clientHeight + 300) {
-              this.$emit("scrollRefresh");
+            if (this.results.length > 1) {
+              this.$notify.info(
+                this.$gettextInterpolate(this.$gettext("%{n} pictures found"), { n: this.results.length })
+              );
             }
-          });
-        }
-      }).catch(() => {
-        this.scrollDisabled = false;
-      }).finally(() => {
-        this.dirty = false;
-        this.loading = false;
-        this.listen = true;
-      });
+          } else if (this.results.length >= Photo.limit()) {
+            this.offset = offset;
+            this.scrollDisabled = true;
+            this.complete = true;
+            this.$notify.warn(this.$gettext("Can't load more, limit reached"));
+          } else {
+            this.offset = offset + count;
+            this.page++;
+
+            this.$nextTick(() => {
+              if (this.$root.$el.clientHeight <= window.document.documentElement.clientHeight + 300) {
+                this.loadMore();
+              }
+            });
+          }
+        })
+        .catch(() => {
+          this.scrollDisabled = false;
+        })
+        .finally(() => {
+          this.dirty = false;
+          this.loading = false;
+          this.listen = true;
+        });
     },
     updateSettings(props) {
       if (!props || typeof props !== "object" || props.target) {
@@ -330,7 +409,7 @@ export default {
             this.settings[key] = value;
         }
 
-        window.localStorage.setItem("album_photos_"+key, this.settings[key]);
+        window.localStorage.setItem("album_photos_" + key, this.settings[key]);
       }
     },
     updateFilter(props) {
@@ -356,13 +435,14 @@ export default {
 
       if (this.model.Order !== this.filter.order) {
         this.model.Order = this.filter.order;
-        this.updateAlbum();
       }
 
-      if (this.loading) return;
+      if (this.loading) {
+        return;
+      }
 
       const query = {
-        view: this.settings.view
+        view: this.settings.view,
       };
 
       Object.assign(query, this.filter);
@@ -377,7 +457,7 @@ export default {
         return;
       }
 
-      this.$router.replace({query: query});
+      this.$router.replace({ query: query });
     },
     searchParams() {
       const params = {
@@ -409,11 +489,20 @@ export default {
       this.loadMore();
     },
     search() {
+      /**
+       * search is called on mount or route change. If the route changed to an
+       * open lightbox, no search is required. There is no reason to do an
+       * initial results load, if the results aren't currently visible
+       */
+      if (this.lightbox.open) {
+        return;
+      }
+
       this.scrollDisabled = true;
 
       // Don't query the same data more than once
       if (JSON.stringify(this.lastFilter) === JSON.stringify(this.filter)) {
-        this.$nextTick(() => this.$emit("scrollRefresh"));
+        // this.$nextTick(() => this.$emit("scrollRefresh"));
         return;
       }
 
@@ -427,46 +516,60 @@ export default {
 
       const params = this.searchParams();
 
-      Photo.search(params).then(response => {
-        this.offset = this.batchSize;
-        this.results = response.models;
-        this.viewer.results = [];
-        this.viewer.complete = false;
-        this.complete = (response.count < this.batchSize);
-        this.scrollDisabled = this.complete;
-
-        if (this.complete) {
-          if (!this.results.length) {
-            this.$notify.warn(this.$gettext("No pictures found"));
-          } else if (this.results.length === 1) {
-            this.$notify.info(this.$gettext("One picture found"));
-          } else {
-            this.$notify.info(this.$gettextInterpolate(this.$gettext("%{n} pictures found"), {n: this.results.length}));
+      Photo.search(params)
+        .then((response) => {
+          // Hide search toolbar expansion panel when matching pictures were found.
+          if (this.offset === 0 && response.count > 0) {
+            this.hideExpansionPanel();
           }
-        } else {
-          this.$notify.info(this.$gettextInterpolate(this.$gettext("More than %{n} pictures found"), {n: 100}));
 
-          this.$nextTick(() => {
-            if (this.$root.$el.clientHeight <= window.document.documentElement.clientHeight + 300) {
-              this.$emit("scrollRefresh");
+          this.offset = this.batchSize;
+          this.results = response.models;
+          this.lightbox.results = [];
+          this.lightbox.complete = false;
+          this.complete = response.count < this.batchSize;
+          this.scrollDisabled = this.complete;
+
+          if (this.complete) {
+            if (!this.results.length) {
+              this.$notify.warn(this.$gettext("No pictures found"));
+            } else if (this.results.length === 1) {
+              this.$notify.info(this.$gettext("One picture found"));
+            } else {
+              this.$notify.info(
+                this.$gettextInterpolate(this.$gettext("%{n} pictures found"), { n: this.results.length })
+              );
             }
-          });
-        }
-      }).finally(() => {
-        this.dirty = false;
-        this.loading = false;
-        this.listen = true;
-      });
+          } else {
+            // this.$notify.info(this.$gettextInterpolate(this.$gettext("More than %{n} pictures found"), {n: 100}));
+            this.$nextTick(() => {
+              if (this.$root.$el.clientHeight <= window.document.documentElement.clientHeight + 300) {
+                this.loadMore();
+              }
+            });
+          }
+        })
+        .finally(() => {
+          this.dirty = false;
+          this.loading = false;
+          this.listen = true;
+        });
     },
     findAlbum() {
-      return this.model.find(this.uid).then(m => {
-        this.model = m;
+      return this.model
+        .find(this.uid)
+        .then((m) => {
+          this.model = m;
 
-        this.filter.order = m.Order;
-        window.document.title = `${this.$config.get("siteTitle")}: ${this.model.Title}`;
+          this.filter.order = m.Order;
+          window.document.title = `${this.$config.get("siteTitle")}: ${this.model.Title}`;
 
-        return Promise.resolve(this.model);
-      });
+          return Promise.resolve(this.model);
+        })
+        .catch((e) => {
+          this.$router.push({ name: this.collectionRoute });
+          return Promise.reject(e);
+        });
     },
     onAlbumsUpdated(ev, data) {
       if (!this.listen) return;
@@ -495,7 +598,7 @@ export default {
             this.filter.order = this.model.Order;
             this.updateQuery();
           } else {
-            this.loadMore();
+            this.loadMore(true);
           }
 
           return;
@@ -503,21 +606,25 @@ export default {
       }
     },
     updateResults(entity) {
-      this.results.filter((m) => m.UID === entity.UID).forEach((m) => {
-        for (let key in entity) {
-          if (key !== "UID" && entity.hasOwnProperty(key) && entity[key] != null && typeof entity[key] !== "object") {
-            m[key] = entity[key];
+      this.results
+        .filter((m) => m.UID === entity.UID)
+        .forEach((m) => {
+          for (let key in entity) {
+            if (key !== "UID" && entity.hasOwnProperty(key) && entity[key] != null && typeof entity[key] !== "object") {
+              m[key] = entity[key];
+            }
           }
-        }
-      });
+        });
 
-      this.viewer.results.filter((m) => m.UID === entity.UID).forEach((m) => {
-        for (let key in entity) {
-          if (key !== "UID" && entity.hasOwnProperty(key) && entity[key] != null && typeof entity[key] !== "object") {
-            m[key] = entity[key];
+      this.lightbox.results
+        .filter((m) => m.UID === entity.UID)
+        .forEach((m) => {
+          for (let key in entity) {
+            if (key !== "UID" && entity.hasOwnProperty(key) && entity[key] != null && typeof entity[key] !== "object") {
+              m[key] = entity[key];
+            }
           }
-        }
-      });
+        });
     },
     removeResult(results, uid) {
       const index = results.findIndex((m) => m.UID === uid);
@@ -527,21 +634,23 @@ export default {
       }
     },
     onUpdate(ev, data) {
-      if (!this.listen) return;
+      if (!this.listen) {
+        return;
+      }
 
       if (!data || !data.entities) {
         return;
       }
 
-      const type = ev.split('.')[1];
+      const type = ev.split(".")[1];
 
       switch (type) {
-        case 'updated':
+        case "updated":
           for (let i = 0; i < data.entities.length; i++) {
             this.updateResults(data.entities[i]);
           }
           break;
-        case 'restored':
+        case "restored":
           this.dirty = true;
           this.scrollDisabled = false;
           this.complete = false;
@@ -549,8 +658,8 @@ export default {
           this.loadMore();
 
           break;
-        case 'deleted':
-        case 'archived':
+        case "deleted":
+        case "archived":
           this.dirty = true;
           this.complete = false;
 
@@ -558,7 +667,7 @@ export default {
             const uid = data.entities[i];
 
             this.removeResult(this.results, uid);
-            this.removeResult(this.viewer.results, uid);
+            this.removeResult(this.lightbox.results, uid);
             this.$clipboard.removeId(uid);
           }
 

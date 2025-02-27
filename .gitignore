@@ -1,50 +1,57 @@
-# Application files and directories
+# Ignore temporary build files, dependencies, logs, and test output:
+*.socket
+*.lock
+*.sock
+*.pid
+*.log
+*.jsonl
+*.db
+*.db-journal
+*.sqlite
+*.override.yml
+*.tmp.yml
+*.override.yaml
+*.tmp.yaml
+*.out
+*.test
+*.exe
+*.dll
+*.so
+*.dylib
+/*.zip
+/coverage.*
+__pycache__
+venv
+.venv
+.env
+.tmp
+.eslintcache
+/tmp/
+/test/
+*-lock.json
+/node_modules
+/frontend/node_modules/*
+/frontend/tests/*.html
+/frontend/tests/*.log
+/frontend/tests/screenshots
+/frontend/src/locales/*.mo
+/frontend/tests_output
+frontend/coverage/
 /photoprism
 /photoprism-*
 /photos/originals/*
 /photos/import/*
 /storage/*
 /build/*
-/node_modules
-/pro
-/plus
-/frontend/.eslintcache
-/frontend/node_modules/*
-/frontend/tests/*.html
-/frontend/tests/*.log
-/frontend/tests/screenshots
-/frontend/src/locales/*.mo
+/assets/docs
 /assets/facenet
 /assets/nasnet
 /assets/nsfw
 /assets/static/build/
-/package-lock.json
-/frontend/tests_output
-/tmp/
-*.log
-*.pid
-*.db
-*.db-journal
-docker-compose.override.yml
-docker-compose.tmp.yml
+/pro
+/plus
 
-# Binaries for programs and plugins
-*.exe
-*.dll
-*.so
-*.dylib
-/*.zip
-# Test binary, build with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-/coverage.*
-
-# Project-local glide cache, RE: https://github.com/Masterminds/glide/issues/736
-.glide/
-
-# Generated files
+# Files created automatically by editors and/or operating systems:
 .DS_Store
 .DS_Store?
 ._*
@@ -54,13 +61,9 @@ ehthumbs.db
 Thumbs.db
 .heartbeat
 .idea
+.glide
 *~
 .goutputstream*
 .c9revisions
 .settings
 .swp
-.tmp
-.env
-
-#Karma Coverage Report
-frontend/coverage/

@@ -6,12 +6,18 @@
 import PPageAbout from "./about/about.vue";
 
 export default {
-  name: 'PPageAdmin',
-  components: {PPageAbout},
+  name: "PPageAdmin",
+  components: { PPageAbout },
   data() {
     return {
-      rtl: this.$rtl,
+      rtl: this.$isRtl,
     };
+  },
+  mounted() {
+    this.$view.enter(this);
+  },
+  unmounted() {
+    this.$view.leave(this);
   },
   methods: {},
 };

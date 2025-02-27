@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2018 - 2023 PhotoPrism UG. All rights reserved.
+Copyright (c) 2018 - 2025 PhotoPrism UG. All rights reserved.
 
     This program is free software: you can redistribute it and/or modify
     it under Version 3 of the GNU Affero General Public License (the "AGPL"):
@@ -24,11 +24,13 @@ Additional information can be found in our Developer Guide:
 */
 
 import RestModel from "model/rest";
-import Form from "common/form";
-import Util from "common/util";
-import Api from "common/api";
-import { T, $gettext } from "common/vm";
-import { config } from "app/session";
+import memoizeOne from "memoize-one";
+import * as auth from "options/auth";
+import $util from "common/util";
+import $api from "common/api";
+import { T, $gettext } from "common/gettext";
+import { Form } from "common/form";
+import { $config } from "app/session";
 
 export class User extends RestModel {
   getDefaults() {
@@ -37,6 +39,8 @@ export class User extends RestModel {
       UID: "",
       UUID: "",
       AuthProvider: "",
+      AuthMethod: "",
+      AuthIssuer: "",
       AuthID: "",
       Name: "",
       DisplayName: "",
@@ -87,7 +91,7 @@ export class User extends RestModel {
         About: "",
         Bio: "",
         Location: "",
-        Country: "",
+        Country: "zz",
         Phone: "",
         SiteURL: "",
         ProfileURL: "",
@@ -128,7 +132,7 @@ export class User extends RestModel {
       return "";
     }
 
-    let dir = config.get("usersPath");
+    let dir = $config.get("usersPath");
 
     if (dir) {
       return `${dir}/${handle}`;
@@ -145,7 +149,7 @@ export class User extends RestModel {
     } else if (this.Details && this.Details.GivenName) {
       return this.Details.GivenName;
     } else if (this.Name) {
-      return T(Util.capitalize(this.Name));
+      return T($util.capitalize(this.Name));
     }
 
     return $gettext("Unknown");
@@ -159,7 +163,7 @@ export class User extends RestModel {
     } else if (this.Details && this.Details.JobTitle) {
       return this.Details.JobTitle;
     } else if (this.Role) {
-      return T(Util.capitalize(this.Role));
+      return T($util.capitalize(this.Role));
     }
 
     return $gettext("Account");
@@ -170,14 +174,18 @@ export class User extends RestModel {
   }
 
   getRegisterForm() {
-    return Api.options(this.getEntityResource() + "/register").then((response) =>
-      Promise.resolve(new Form(response.data))
-    );
+    return $api
+      .options(this.getEntityResource() + "/register")
+      .then((response) => Promise.resolve(new Form(response.data)));
   }
 
-  getAvatarURL(size) {
+  getAvatarURL(size, config) {
     if (!size) {
       size = "tile_500";
+    }
+
+    if (!config) {
+      config = $config;
     }
 
     if (this.Thumb) {
@@ -200,26 +208,143 @@ export class User extends RestModel {
 
     formData.append("files", file);
 
-    return Api.post(this.getEntityResource() + `/avatar`, formData, formConf).then((response) =>
-      Promise.resolve(this.setValues(response.data))
-    );
+    return $api
+      .post(this.getEntityResource() + `/avatar`, formData, formConf)
+      .then((response) => Promise.resolve(this.setValues(response.data)));
   }
 
   getProfileForm() {
-    return Api.options(this.getEntityResource() + "/profile").then((response) =>
-      Promise.resolve(new Form(response.data))
-    );
+    return $api
+      .options(this.getEntityResource() + "/profile")
+      .then((response) => Promise.resolve(new Form(response.data)));
   }
 
   isRemote() {
     return this.AuthProvider && this.AuthProvider === "ldap";
   }
 
+  requiresPassword() {
+    return !this.AuthProvider || this.AuthProvider === "default" || this.AuthProvider === "local";
+  }
+
+  hasWebDAV() {
+    return this.WebDAV && this.canEnableWebDAV();
+  }
+
+  canEnableWebDAV() {
+    if (this.AuthProvider === "none" || !this.Name) {
+      return false;
+    }
+
+    return this.Role === "admin" || this.Role === "user" || this.Role === "contributor";
+  }
+
+  authInfo() {
+    if (!this || !this.AuthProvider) {
+      return $gettext("Default");
+    }
+
+    let providerName = memoizeOne(auth.Providers)()[this.AuthProvider];
+
+    if (providerName) {
+      providerName = T(providerName);
+    } else {
+      providerName = $util.capitalize(this.AuthProvider);
+    }
+
+    if (!this.AuthMethod || this.AuthMethod === "" || this.AuthMethod === "default") {
+      return providerName;
+    }
+
+    let methodName = memoizeOne(auth.Methods)()[this.AuthMethod];
+
+    if (!methodName) {
+      methodName = this.AuthMethod;
+    }
+
+    return `${providerName} (${methodName})`;
+  }
+
   changePassword(oldPassword, newPassword) {
-    return Api.put(this.getEntityResource() + "/password", {
-      old: oldPassword,
-      new: newPassword,
-    }).then((response) => Promise.resolve(response.data));
+    return $api
+      .put(this.getEntityResource() + "/password", {
+        old: oldPassword,
+        new: newPassword,
+      })
+      .then((response) => Promise.resolve(response.data));
+  }
+
+  createPasscode(password) {
+    return $api
+      .post(this.getEntityResource() + "/passcode", {
+        type: "totp",
+        password: password,
+      })
+      .then((response) => Promise.resolve(response.data));
+  }
+
+  confirmPasscode(code) {
+    return $api
+      .post(this.getEntityResource() + "/passcode/confirm", {
+        type: "totp",
+        code: code,
+      })
+      .then((response) => Promise.resolve(response.data));
+  }
+
+  activatePasscode() {
+    return $api
+      .post(this.getEntityResource() + "/passcode/activate", {
+        type: "totp",
+      })
+      .then((response) => Promise.resolve(response.data));
+  }
+
+  deactivatePasscode(password) {
+    return $api
+      .post(this.getEntityResource() + "/passcode/deactivate", {
+        type: "totp",
+        password: password,
+      })
+      .then((response) => Promise.resolve(response.data));
+  }
+
+  disablePasscodeSetup(hasPassword) {
+    if (!this.Name || !this.CanLogin || this.ID < 1) {
+      return true;
+    }
+
+    switch (this.AuthProvider) {
+      case "":
+      case "default":
+      case "oidc":
+        return !hasPassword;
+      case "local":
+      case "ldap":
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  findApps() {
+    if (!this.Name || !this.CanLogin || this.ID < 1) {
+      return Promise.reject();
+    }
+
+    const params = {
+      provider: "application",
+      method: "default",
+      count: 10000,
+      offset: 0,
+      order: "client_name",
+    };
+
+    return $api
+      .get(this.getEntityResource() + "/sessions", {
+        params,
+      })
+      .then((response) => Promise.resolve(response.data));
   }
 
   static getCollectionResource() {
